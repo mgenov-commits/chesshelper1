@@ -14,7 +14,7 @@ jobs:
           java-version: '17'
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
       - name: Install Android workload
         run: dotnet workload install android
       - name: Download Stockfish
