@@ -17,8 +17,15 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Install Android workload
         run: dotnet workload install android
-      - name: Check Stockfish
-        run: test -f lib/arm64-v8a/libstockfish.so
+      - name: Download Stockfish
+        run: |
+          mkdir -p lib/arm64-v8a sf
+          curl -L -o sf/sf.tar https://github.com/official-stockfish/Stockfish/releases/download/sf_17/stockfish-android-armv8.tar
+          tar -xf sf/sf.tar -C sf
+          BIN=$(find sf -type f -name 'stockfish*' ! -name '*.tar' ! -name '*.txt' ! -name '*.md' | head -n 1)
+          echo "Found: $BIN"
+          cp "$BIN" lib/arm64-v8a/libstockfish.so
+          ls -la lib/arm64-v8a
       - name: Build APK
         run: dotnet build ChessHelper.csproj -c Debug
       - name: Find APK
