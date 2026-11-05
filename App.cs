@@ -624,10 +624,10 @@ namespace ChessHelper
             b.TextSize = 11;
             b.SetAllCaps(false);
             b.SetPadding(14, 4, 14, 4);
-            b.MinWidth = 0;
-            b.MinimumWidth = 0;
-            b.MinHeight = 0;
-            b.MinimumHeight = 0;
+            b.SetMinWidth(0);
+            b.SetMinimumWidth(0);
+            b.SetMinHeight(0);
+            b.SetMinimumHeight(0);
             return b;
         }
 
