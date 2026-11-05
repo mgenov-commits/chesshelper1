@@ -395,6 +395,9 @@ namespace ChessHelper
         protected override void OnDraw(Canvas? canvas)
         {
             if (!has || canvas == null) return;
+            var loc = new int[2];
+            GetLocationOnScreen(loc);
+            canvas.Translate(-loc[0], -loc[1]);
             canvas.DrawLine(x1, y1, x2, y2, p);
             double ang = Math.Atan2(y2 - y1, x2 - x1);
             float len = 50;
