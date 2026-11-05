@@ -563,7 +563,7 @@ namespace ChessHelper
                 var m = Resources!.DisplayMetrics!;
                 _w = m.WidthPixels;
                 _h = m.HeightPixels;
-                _reader = ImageReader.NewInstance(_w, _h, (ImageFormatType)1, 2);
+                _reader = ImageReader.NewInstance(_w, _h, (ImageFormatType)1, 3);
                 _vd = _proj.CreateVirtualDisplay("cap", _w, _h, (int)m.DensityDpi,
                     (DisplayFlags)16, _reader!.Surface, null, null);
 
@@ -722,8 +722,10 @@ namespace ChessHelper
         {
             for (int i = 0; i < tries; i++)
             {
-                using (var img = _reader?.AcquireLatestImage())
+                Android.Media.Image? img = null;
+                try
                 {
+                    img = _reader?.AcquireLatestImage();
                     if (img != null)
                     {
                         var bmp = Crop(img);
@@ -737,6 +739,12 @@ namespace ChessHelper
                             return (bmp, true);
                         }
                     }
+                }
+                catch (Java.Lang.IllegalStateException) { }
+                finally
+                {
+                    try { img?.Close(); } catch { }
+                    img?.Dispose();
                 }
                 if (i < tries - 1) await Task.Delay(100);
             }
