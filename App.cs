@@ -185,6 +185,8 @@ namespace ChessHelper
             });
 
             ShowOverlay();
+            _cts = new CancellationTokenSource();
+            _ = AutoLoop(_cts.Token);
             return StartCommandResult.Sticky;
         }
 
@@ -208,7 +210,14 @@ namespace ChessHelper
             _panel = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
             var bAn = new Button(this) { Text = "Анализ" };
             var bCal = new Button(this) { Text = "Калибровка" };
-            var bSide = new Button(this) { Text = "Ход: белых" };
+            var bSide = _bSide = new Button(this) { Text = "Ход: белых" };
+            var bAuto = new Button(this) { Text = "Авто: вкл" };
+            bAuto.Click += (s, e) =>
+            {
+                _autoOn = !_autoOn;
+                _sig = null;
+                bAuto.Text = _autoOn ? "Авто: вкл" : "Авто: выкл";
+            };
             var bFlip = new Button(this) { Text = "Белые снизу" };
             var bExit = new Button(this) { Text = "Выход" };
 
@@ -226,13 +235,139 @@ namespace ChessHelper
             };
             bExit.Click += (s, e) => StopSelf();
 
-            foreach (var b in new[] { bAn, bCal, bSide, bFlip, bExit }) _panel.AddView(b);
+            foreach (var b in new[] { bAuto, bAn, bCal, bSide, bFlip, bExit }) _panel.AddView(b);
 
             var lp = new WindowManagerLayoutParams(-2, -2,
                 WindowManagerTypes.ApplicationOverlay,
                 WindowManagerFlags.NotFocusable, Format.Translucent)
             { Gravity = GravityFlags.Top | GravityFlags.Left, X = 10, Y = 150 };
             _wm.AddView(_panel, lp);
+        }
+
+        // ================= АВТОМАТИЧЕСКИЙ РЕЖИМ =================
+        bool _autoOn = true;
+        CancellationTokenSource? _cts;
+        int[]? _sig;
+        Button? _bSide;
+
+        // уменьшенное чёрно-белое изображение области доски 64x64
+        int[] Signature(Bitmap bmp)
+        {
+            using var crop = Bitmap.CreateBitmap(bmp, _rec.X, _rec.Y, _rec.Size, _rec.Size);
+            using var sm = Bitmap.CreateScaledBitmap(crop, 64, 64, true)!;
+            var px = new int[64 * 64];
+            sm.GetPixels(px, 0, 64, 0, 0, 64, 64);
+            var g = new int[px.Length];
+            for (int i = 0; i < px.Length; i++)
+                g[i] = (((px[i] >> 16) & 255) + ((px[i] >> 8) & 255) + (px[i] & 255)) / 3;
+            return g;
+        }
+
+        static double SigDiff(int[] a, int[] b)
+        {
+            long s = 0;
+            for (int i = 0; i < a.Length; i++) s += Math.Abs(a[i] - b[i]);
+            return (double)s / a.Length;
+        }
+
+        // в стартовой позиции белые фигуры светлее чёрных: кто светлее — тот снизу
+        static bool DetectWhiteBottom(int[] sig)
+        {
+            double top = 0, bot = 0;
+            for (int i = 0; i < 16 * 64; i++) top += sig[i];
+            for (int i = 48 * 64; i < 64 * 64; i++) bot += sig[i];
+            return bot > top;
+        }
+
+        void UpdateSideText()
+        {
+            if (_bSide != null) _bSide.Text = _side == 'w' ? "Ход: белых" : "Ход: чёрных";
+        }
+
+        async Task AnalyzeBitmap(Bitmap bmp)
+        {
+            string? move = await Task.Run(() =>
+            {
+                var grid = _rec.Recognize(bmp);
+                var fen = BoardRecognizer.ToFen(grid, _side);
+                return _engine.BestMove(fen);
+            });
+            if (move == null || move.Length < 4 || move == "(none)") return;
+            var a = _rec.Center(move.Substring(0, 2));
+            var b = _rec.Center(move.Substring(2, 2));
+            _arrow!.Set(a.x, a.y, b.x, b.y);
+            ShowToast("Лучший ход: " + move);
+        }
+
+        async Task AutoLoop(CancellationToken ct)
+        {
+            try
+            {
+                await Task.Delay(4000, ct); // ждём запуск Stockfish
+                while (!ct.IsCancellationRequested)
+                {
+                    await Task.Delay(1000, ct);
+                    if (!_autoOn) continue;
+                    try
+                    {
+                        var bmp = await Capture();
+                        if (bmp == null) continue;
+                        var sig = Signature(bmp);
+
+                        // 1. Автокалибровка: считаем, что на доске стартовая позиция
+                        if (!_rec.Calibrated)
+                        {
+                            _rec.WhiteBottom = DetectWhiteBottom(sig);
+                            _rec.Calibrate(bmp);
+                            _side = 'w';
+                            UpdateSideText();
+                            ShowToast("Авто-калибровка: " + (_rec.WhiteBottom ? "белые снизу" : "чёрные снизу"));
+                            if (_rec.WhiteBottom) await AnalyzeBitmap(bmp);
+                            await Task.Delay(400, ct);
+                            var b0 = await Capture();
+                            _sig = b0 != null ? Signature(b0) : sig;
+                            continue;
+                        }
+
+                        if (_sig == null) { _sig = sig; continue; }
+
+                        // 2. Ждём изменения на доске
+                        if (SigDiff(sig, _sig) < 0.6) continue;
+
+                        // 3. Ждём, пока закончится анимация хода
+                        var prev = sig;
+                        int stable = 0;
+                        for (int k = 0; k < 20 && stable < 2; k++)
+                        {
+                            await Task.Delay(500, ct);
+                            var b2 = await Capture();
+                            if (b2 == null) continue;
+                            var s2 = Signature(b2);
+                            if (SigDiff(s2, prev) < 0.2) stable++; else stable = 0;
+                            prev = s2;
+                        }
+
+                        // 4. Убираем старую стрелку и снимаем чистый кадр
+                        _arrow!.Clear();
+                        await Task.Delay(300, ct);
+                        var clean = await Capture();
+                        if (clean == null) continue;
+
+                        // 5. Ход перешёл к другой стороне
+                        _side = _side == 'w' ? 'b' : 'w';
+                        UpdateSideText();
+                        char mine = _rec.WhiteBottom ? 'w' : 'b';
+                        if (_side == mine) await AnalyzeBitmap(clean);
+
+                        await Task.Delay(400, ct);
+                        var b3 = await Capture();
+                        _sig = b3 != null ? Signature(b3) : Signature(clean);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception) { /* пропускаем кадр и пробуем снова */ }
+                }
+            }
+            catch (OperationCanceledException) { }
         }
 
         async Task<Bitmap?> Capture()
@@ -300,6 +435,7 @@ namespace ChessHelper
                 if (_panel != null) _wm?.RemoveView(_panel);
             }
             catch { }
+            _cts?.Cancel();
             _engine.Dispose();
             _vd?.Release();
             _proj?.Stop();
