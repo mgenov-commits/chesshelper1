@@ -840,7 +840,7 @@ namespace ChessHelper
                     var grid = _rec.Recognize(bmp);
                     fen = BoardRecognizer.ToFen(grid, _side);
                     var bad = FenGuard.Validate(grid, _side);
-                    if (bad != null) { FenGuard.Show("Неверная позиция: " + bad); return null; }
+                    if (bad != null) { FenGuard.Show("Неверная позиция: " + bad); return; }
                     FenGuard.Show(fen);
                 }
             }
