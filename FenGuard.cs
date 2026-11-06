@@ -98,7 +98,7 @@ namespace ChessHelper
                 try
                 {
                     var cm = (ClipboardManager?)ctx.GetSystemService(Context.ClipboardService);
-                    cm?.SetPrimaryClip(ClipData.NewPlainText("fen", text));
+                    if (cm != null) cm.PrimaryClip = ClipData.NewPlainText("fen", text);
                 }
                 catch { }
                 Toast.MakeText(ctx, text, ToastLength.Long)!.Show();
