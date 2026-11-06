@@ -838,6 +838,8 @@ namespace ChessHelper
                 {
                     if (bmp == null) { ShowToast("Нет изображения"); return; }
                     var grid = _rec.Recognize(bmp);
+                    var autoSide = TurnDetector.Detect(bmp, grid, _rec.X, _rec.Y, _rec.Size, _rec.WhiteBottom);
+                    if (autoSide != null) _side = autoSide.Value;
                     fen = BoardRecognizer.ToFen(grid, _side);
                     var bad = FenGuard.Validate(grid, _side);
                     if (bad != null) { FenGuard.Show("Неверная позиция: " + bad); return; }
