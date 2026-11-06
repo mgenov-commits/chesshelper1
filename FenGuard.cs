@@ -95,11 +95,6 @@ namespace ChessHelper
             new Handler(Looper.MainLooper!).Post(() =>
             {
                 var ctx = Android.App.Application.Context;
-                try
-                {
-                    var cm = (ClipboardManager?)ctx.GetSystemService(Context.ClipboardService);
-                    if (cm != null) cm.PrimaryClip = ClipData.NewPlainText("fen", text);
-                }
                 catch { }
                 Toast.MakeText(ctx, text, ToastLength.Long)!.Show();
             });
